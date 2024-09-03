@@ -1,8 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-pub mod communication;
+//pub mod communication;
 
-use communication::CommunicationInterface;
+use simulator_framework::communication::CommunicationInterface; // Adjust the path as needed
+
 use tauri::Manager;
 use tauri::command;
 use tokio::net::TcpListener;
@@ -15,9 +16,6 @@ use tokio::sync::broadcast;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
-
-
-
 
 mod plugin_manager; // Include plugin manager module
 
@@ -51,29 +49,16 @@ struct AppState {
     js_clients_tx: Arc<Mutex<broadcast::Sender<Message>>>, // Broadcast sender for JS clients
 }
 
-
-impl AppState {
-    // Send message to the external client
-    pub async fn send_to_external(&self, message: Message) {
+#[async_trait::async_trait]
+impl CommunicationInterface for AppState {
+    async fn send_to_js_clients(&self, message: Message) {
         if let Some(sender) = &*self.external_client_tx.lock().await {
             let _ = sender.send(message);
         }
     }
 
-    // Send message to all JS clients
-    pub async fn send_to_js_clients(&self, message: Message) {
-        let _ = self.js_clients_tx.lock().await.send(message);
-    }
-}
-
-#[async_trait::async_trait]
-impl simulator_framework::communication::CommunicationInterface for AppState {
-    async fn send_to_js_clients(&self, message: Message) {
-        self.send_to_js_clients(message).await;
-    }
-
     async fn send_to_external(&self, message: Message) {
-        self.send_to_external(message).await;
+        let _ = self.js_clients_tx.lock().await.send(message);
     }
 }
 
@@ -85,13 +70,13 @@ async fn main() {
         .setup(move |app| {
             let (js_clients_tx, _) = broadcast::channel(16);
 
-            let state =AppState {
+            let state = Arc::new(AppState {
                 js_clients_tx: Arc::new(Mutex::new(js_clients_tx)),
                 external_client_tx: Arc::new(Mutex::new(None)),
-            };
+            });
             
             // Create the PluginManager with a reference to `state`
-            let plugin_manager = PluginManager::new(Arc::new(state.clone()));
+            let plugin_manager = Arc::new(PluginManager::new(state.clone()));
             
             let config = load_config();
 
@@ -105,9 +90,9 @@ async fn main() {
         .expect("error while running tauri application");
 }
 
-async fn start_js_websocket_server<I: simulator_framework::communication::CommunicationInterface + Send + 'static + Clone>(state: AppState, plugin_manager: PluginManager<I>, port: u16) 
+async fn start_js_websocket_server<I: CommunicationInterface>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, port: u16) 
 where
-    I: simulator_framework::communication::CommunicationInterface + Send + Sync + 'static + Clone
+    I: CommunicationInterface
 {
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
@@ -120,9 +105,10 @@ where
     }
 }
 
-async fn start_external_websocket_server<I: simulator_framework::communication::CommunicationInterface + Send + 'static + Clone>(state: AppState, plugin_manager: PluginManager<I>,port: u16)
+
+async fn start_external_websocket_server<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>,port: u16)
 where
-    I: simulator_framework::communication::CommunicationInterface + Send + Sync + 'static + Clone
+    I: CommunicationInterface 
 {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .await
@@ -134,7 +120,8 @@ where
     }
 }
 
-async fn handle_js_client<I: simulator_framework::communication::CommunicationInterface + Send + 'static + Clone>(state: AppState, plugin_manager: PluginManager<I>, stream: tokio::net::TcpStream) {
+
+async fn handle_js_client<I: CommunicationInterface>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) {
     let ws_stream = accept_async(stream).await.expect("Error during WebSocket handshake");
     let (mut write, mut read) = ws_stream.split();
     let mut rx = state.js_clients_tx.lock().await.subscribe();
@@ -156,7 +143,7 @@ async fn handle_js_client<I: simulator_framework::communication::CommunicationIn
     }
 }
 
-async fn handle_external_client<I: simulator_framework::communication::CommunicationInterface + Send + 'static + Clone>(state: AppState, plugin_manager: PluginManager<I>, stream: tokio::net::TcpStream) {
+async fn handle_external_client<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) {
     
     let ws_stream = match accept_async(stream).await {
         Ok(ws) => ws,
