@@ -16,6 +16,7 @@ use tokio::sync::broadcast;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
+use tokio::task::JoinHandle;
 
 mod plugin_manager; // Include plugin manager module
 
@@ -52,20 +53,19 @@ struct AppState {
 #[async_trait::async_trait]
 impl CommunicationInterface for AppState {
     async fn send_to_js_clients(&self, message: Message) {
-        if let Some(sender) = &*self.external_client_tx.lock().await {
-            let _ = sender.send(message);
-        }
+        let _ = self.js_clients_tx.lock().await.send(message);
     }
 
     async fn send_to_external(&self, message: Message) {
-        let _ = self.js_clients_tx.lock().await.send(message);
+        if let Some(sender) = &*self.external_client_tx.lock().await {
+            let _ = sender.send(message);
+        }
+        
     }
 }
 
 #[tokio::main]
 async fn main() {
-
-
     tauri::Builder::default()
         .setup(move |app| {
             let (js_clients_tx, _) = broadcast::channel(16);
@@ -74,14 +74,34 @@ async fn main() {
                 js_clients_tx: Arc::new(Mutex::new(js_clients_tx)),
                 external_client_tx: Arc::new(Mutex::new(None)),
             });
-            
-            // Create the PluginManager with a reference to `state`
+
             let plugin_manager = Arc::new(PluginManager::new(state.clone()));
-            
+
             let config = load_config();
 
-            tauri::async_runtime::spawn(start_js_websocket_server(state.clone(), plugin_manager.clone(), config.js_port));
-            tauri::async_runtime::spawn(start_external_websocket_server(state.clone(), plugin_manager.clone(), config.external_port));
+
+            
+            // Spawning the WebSocket server with JS client handler
+            tauri::async_runtime::spawn(start_websocket_server(
+                config.js_port,
+                {
+                    let state = state.clone();
+                    let plugin_manager = plugin_manager.clone();
+                    // non ti preoccupare di avere tokio::spawn annidati
+                    move |stream| tokio::spawn(handle_js_client(state.clone(), plugin_manager.clone(), stream))
+                },
+            ));
+
+            // Spawning the WebSocket server with External client handler
+            tauri::async_runtime::spawn(start_websocket_server(
+                config.external_port,
+                {
+                    let state = state.clone();
+                    let plugin_manager = plugin_manager.clone();
+                    // non ti preoccupare di avere tokio::spawn annidati
+                    move |stream| tokio::spawn(handle_external_client(state.clone(), plugin_manager.clone(), stream))
+                },
+            ));
 
             Ok(())
         })
@@ -90,36 +110,23 @@ async fn main() {
         .expect("error while running tauri application");
 }
 
-async fn start_js_websocket_server<I: CommunicationInterface>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, port: u16) 
+
+
+// The merged WebSocket server function with simplified parameters
+async fn start_websocket_server<F>(port: u16, handler: F)
 where
-    I: CommunicationInterface
-{
-
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        .await
-        .expect("Failed to bind JS WebSocket server");
-    println!("JS WebSocket server running on ws://127.0.0.1:{}", port);
-
-    while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_js_client(state.clone(), plugin_manager.clone(), stream));
-    }
-}
-
-
-async fn start_external_websocket_server<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>,port: u16)
-where
-    I: CommunicationInterface 
+    F: Fn(tokio::net::TcpStream) -> JoinHandle<()>,
 {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .await
-        .expect("Failed to bind External WebSocket server");
-    println!("External WebSocket server running on ws://127.0.0.1:{}", port);
+        .expect("Failed to bind WebSocket server");
+    println!("WebSocket server running on ws://127.0.0.1:{}", port);
 
     while let Ok((stream, _)) = listener.accept().await {
-        tokio::spawn(handle_external_client(state.clone(), plugin_manager.clone(), stream));
+        // non ti preoccupare di avere tokio::spawn annidati
+        tokio::spawn(handler(stream));
     }
 }
-
 
 async fn handle_js_client<I: CommunicationInterface>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) {
     let ws_stream = accept_async(stream).await.expect("Error during WebSocket handshake");
@@ -143,8 +150,11 @@ async fn handle_js_client<I: CommunicationInterface>(state: Arc<AppState>, plugi
     }
 }
 
-async fn handle_external_client<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) {
-    
+async fn handle_external_client<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) 
+{
+    // ad ogni nuova connessione si finisce qui...
+
+    // accetta la connessione...
     let ws_stream = match accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
@@ -153,21 +163,31 @@ async fn handle_external_client<I: CommunicationInterface >(state: Arc<AppState>
         }
     };
     
+    // se la connessione e' valida si prosegue da qui...
+
+    // si splitta il canale di comunicazione con l'OP in due (write e read)
     let (mut write, mut read) = ws_stream.split();
+
+    // qui si crea un nuovo canale di comunication tra questo thread e il thread che gestisce la richiesta...
     let (tx, mut rx) = mpsc::unbounded_channel();
 
-    // Set the sender for the external client
+    // salva il lato tx del canale interno nella variabile apposita...
     *state.external_client_tx.lock().await = Some(tx);
 
-    // Relay messages from the state to the external client
+    // qui si fa partire un altro thread che sta in ascolto per la ricezione della risposta (interna),
+    // quando si riceve la risposta (generata da un altro thread) qui si manda la risposta all'OP
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
-            if write.send(msg).await.is_err() {
+            if write.send(msg).await.is_err() 
+            {
+                // errore sul socket... annulla questa sessione...
                 break;
             }
         }
     });
 
+    // qui si va a gestire la richiesta dell'OP (su questo thread...), 
+    // ed eventuali future richieste da questa connessione...
     while let Some(Ok(msg)) = read.next().await {
         if let Message::Text(text) = msg {
             // Forward the message to the plugin manager for handling
