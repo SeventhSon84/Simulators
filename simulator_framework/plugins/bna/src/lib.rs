@@ -5,6 +5,7 @@ use plugin_interface::interface_for_server::CommunicationInterface;
 
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::protocol::Message;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,13 +16,16 @@ enum DeviceStatus {
     Error,
 }
 
+
+
 #[derive(Clone)]
-pub struct BarcodePlugin {
+pub struct BNAPlugin {
     status: Arc<Mutex<DeviceStatus>>,
     numeric_value: Arc<Mutex<String>>,
+    read_state: Arc<Mutex<bool>>,
 }
 
-impl BarcodePlugin{
+impl BNAPlugin{
     fn status_to_str(&self, status: &DeviceStatus) -> &'static str {
         match status {
             DeviceStatus::Armed => "ARMED",
@@ -32,12 +36,13 @@ impl BarcodePlugin{
 }
 
 #[async_trait::async_trait]
-impl Plugin for BarcodePlugin {
+impl Plugin for BNAPlugin {
 
     fn new() -> Self {
-        BarcodePlugin {
+        BNAPlugin {
             status: Arc::new(Mutex::new(DeviceStatus::Disabled)),
             numeric_value: Arc::new(Mutex::new(String::new())),
+            read_state: Arc::new(Mutex::new(false))
         }
     }
 
@@ -49,12 +54,25 @@ impl Plugin for BarcodePlugin {
 
             match action {
                 "read" => {
-                    if let Some(value) = json.get("value").and_then(|v| v.as_str()) {
+
+                    if let Some(value) = json.get("value").and_then(|v| v.as_str()) 
+                    {
+                        *status = DeviceStatus::Disabled;
+                        
+                        // Lock the read_state mutex and update its value
+                        let mut read_state = self.read_state.lock().await;
+                        *read_state = true;
+
                         let mut numeric_value = self.numeric_value.lock().await;
                         *numeric_value = value.to_string();
-                        let read_msg = serde_json::json!({ "event": "read", "value": value });
+
+                        let read_msg = serde_json::json!({ "event": "read", "value": *numeric_value });
 
                         interface.send_to_external(Message::Text(read_msg.to_string())).await;
+
+                        let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&status) });
+                        interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
+                        interface.send_to_external(Message::Text(status_msg.to_string())).await;
                     }
                 }
                 "error" => {
@@ -63,7 +81,7 @@ impl Plugin for BarcodePlugin {
                     } else {
                         *status = DeviceStatus::Error;
                     }
-
+                    
                     let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&status) });
 
                     interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
@@ -99,9 +117,18 @@ impl Plugin for BarcodePlugin {
                     interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
                     interface.send_to_external(Message::Text(status_msg.to_string())).await;
                 }
+                "query_status" =>{
+                    let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&*status) });
+                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                }
+                "confirm_read" =>{
+                    let status_msg = serde_json::json!({ "event": "confirm_read" });
+                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                }
                 _ => (),
             }
         }
     }
 
 }
+

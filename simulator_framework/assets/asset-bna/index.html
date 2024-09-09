@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BNA Simulator</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <h1>BNA Simulator</h1>
+        <p>Status: <span id="status">DISABLED</span></p>
+        <button id="sendButton" disabled>Send</button>
+        <button id="errorButton">Toggle Error</button>
+         <!-- Dropdown Menu -->
+         <div>
+            <label for="valueSelect">Select Value:</label>
+            <select id="valueSelect">
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+    </div>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

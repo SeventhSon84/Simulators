@@ -6,8 +6,8 @@ switch ($feature) {
     "barcode" { 
         $CONFIG_FILE = "src-tauri/tauri-barcode.conf.json"
     }
-    "assets2" { 
-        $CONFIG_FILE = "src-tauri/tauri-assets2.conf.json"
+    "bna" { 
+        $CONFIG_FILE = "src-tauri/tauri-bna.conf.json"
     }
     "assets3" { 
         $CONFIG_FILE = "src-tauri/tauri-assets3.conf.json"

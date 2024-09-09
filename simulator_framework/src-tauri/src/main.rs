@@ -24,6 +24,12 @@ use barcode_plugin::BarcodePlugin; // or another plugin
 #[cfg(feature = "feature-barcode")]
 type SelectedPlugin = BarcodePlugin;
 
+#[cfg(feature = "feature-bna")]
+use bna_plugin::BNAPlugin; // or another plugin
+
+#[cfg(feature = "feature-bna")]
+type SelectedPlugin = BNAPlugin;
+
 #[derive(Deserialize)]
 struct Config {
     js_port: u16,

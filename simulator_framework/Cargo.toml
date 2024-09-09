@@ -5,5 +5,6 @@ members = [
     "plugin_interface",
 
     "plugins/default",
-    "plugins/barcode" # Add any additional libraries here
+    "plugins/barcode", # Add any additional libraries here
+    "plugins/bna",
 ]
