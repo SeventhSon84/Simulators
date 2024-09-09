@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "src-tauri",
+    "plugin_manager",
+    "plugin_interface",
+
+    "plugins/default",
+    "plugins/barcode" # Add any additional libraries here
+]

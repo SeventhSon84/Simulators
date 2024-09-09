@@ -1,9 +1,8 @@
 // src/plugin.rs
 
-pub mod communication;
+use plugin_interface::interface_for_plugin::Plugin;
+use plugin_interface::interface_for_server::CommunicationInterface;
 
-
-use communication::CommunicationInterface;
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::protocol::Message;
 use std::sync::Arc;
@@ -17,20 +16,22 @@ enum DeviceStatus {
 }
 
 #[derive(Clone)]
-pub struct Plugin {
+pub struct BarcodePlugin {
     status: Arc<Mutex<DeviceStatus>>,
     numeric_value: Arc<Mutex<String>>,
 }
 
-impl Plugin {
-    pub fn new() -> Self {
-        Plugin {
+#[async_trait::async_trait]
+impl Plugin for BarcodePlugin {
+
+    fn new() -> Self {
+        BarcodePlugin {
             status: Arc::new(Mutex::new(DeviceStatus::Disabled)),
             numeric_value: Arc::new(Mutex::new(String::new())),
         }
     }
 
-    pub async fn handle_js_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
+    async fn handle_js_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
         let json: Value = serde_json::from_str(&text).expect("Invalid JSON");
 
         if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
@@ -63,7 +64,7 @@ impl Plugin {
         }
     }
 
-    pub async fn handle_external_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
+    async fn handle_external_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
         let json: Value = serde_json::from_str(&text).expect("Invalid JSON");
 
         if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
@@ -93,6 +94,8 @@ impl Plugin {
         }
     }
 
+}
+impl BarcodePlugin{
     fn status_to_str(&self, status: &DeviceStatus) -> &'static str {
         match status {
             DeviceStatus::Armed => "ARMED",

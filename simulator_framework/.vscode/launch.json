@@ -12,7 +12,8 @@
           "args": [
             "build",
             "--manifest-path=./src-tauri/Cargo.toml",
-            "--no-default-features"
+            "--no-default-features",
+            "--features","feature-barcode"  // Activate the feature_barcode here
           ]
         },
         "env": {
@@ -26,7 +27,8 @@
         "request": "launch",
         "name": "Tauri Production Debug",
         "cargo": {
-          "args": ["build", "--release", "--manifest-path=./src-tauri/Cargo.toml"]
+          "args": ["build", "--release", "--manifest-path=./src-tauri/Cargo.toml",   "--features","feature-barcode"   // Activate the feature_barcode here as well
+]
         },
         "env": {
         "RUST_BACKTRACE": "1"

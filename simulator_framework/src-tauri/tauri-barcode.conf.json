@@ -1,7 +1,7 @@
 {
   "build": {
-    "devPath": "../src",
-    "distDir": "../src",
+    "devPath": "../assets/asset-barcode", 
+    "distDir": "../assets/asset-barcode", 
     "withGlobalTauri": true
   },
   "package": {
@@ -38,7 +38,7 @@
         "icons/icon.ico"
       ],
       "resources": [
-        "../src/assets/config.json"
+        "../assets/asset-barcode/config.json"
       ]
     }
   }

@@ -18,7 +18,13 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.17" 
 futures-util = "0.3" 
 async-trait = "0.1"
+plugin_manager = {path = "../plugin_manager" }
+plugin_interface = { path = "../plugin_interface" }
+default_plugin = {path = "../plugins/default"}
+barcode_plugin = {path = "../plugins/barcode", optional = true}
+
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+feature-barcode = ["barcode_plugin"]

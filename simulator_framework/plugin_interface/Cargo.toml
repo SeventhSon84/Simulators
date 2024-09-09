@@ -1,0 +1,17 @@
+[package]
+name = "plugin_interface"
+version = "0.1.0"
+description = "simulator frameworks plugin manager"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.17" 
+serde_json = "1"
+futures-util = "0.3" 
+async-trait = "0.1"

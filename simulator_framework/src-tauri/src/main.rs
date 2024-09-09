@@ -1,10 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-//pub mod communication;
+use plugin_interface::interface_for_server::CommunicationInterface;
+use plugin_interface::interface_for_plugin::Plugin;
 
-use simulator_framework::communication::CommunicationInterface; // Adjust the path as needed
-
-use tauri::Manager;
 use tauri::command;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
@@ -18,9 +16,13 @@ use std::fs::File;
 use std::io::Read;
 use tokio::task::JoinHandle;
 
-mod plugin_manager; // Include plugin manager module
-
 use plugin_manager::PluginManager;
+
+#[cfg(feature = "feature-barcode")]
+use barcode_plugin::BarcodePlugin; // or another plugin
+
+#[cfg(feature = "feature-barcode")]
+type SelectedPlugin = BarcodePlugin;
 
 #[derive(Deserialize)]
 struct Config {
@@ -67,7 +69,7 @@ impl CommunicationInterface for AppState {
 #[tokio::main]
 async fn main() {
     tauri::Builder::default()
-        .setup(move |app| {
+        .setup(move |_app| {
             let (js_clients_tx, _) = broadcast::channel(16);
 
             let state = Arc::new(AppState {
@@ -75,7 +77,7 @@ async fn main() {
                 external_client_tx: Arc::new(Mutex::new(None)),
             });
 
-            let plugin_manager = Arc::new(PluginManager::new(state.clone()));
+            let plugin_manager = Arc::new(PluginManager::<AppState, SelectedPlugin>::new(state.clone()));
 
             let config = load_config();
 
@@ -128,7 +130,7 @@ where
     }
 }
 
-async fn handle_js_client<I: CommunicationInterface>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) {
+async fn handle_js_client<I: CommunicationInterface, P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I, P>>, stream: tokio::net::TcpStream) {
     let ws_stream = accept_async(stream).await.expect("Error during WebSocket handshake");
     let (mut write, mut read) = ws_stream.split();
     let mut rx = state.js_clients_tx.lock().await.subscribe();
@@ -150,7 +152,7 @@ async fn handle_js_client<I: CommunicationInterface>(state: Arc<AppState>, plugi
     }
 }
 
-async fn handle_external_client<I: CommunicationInterface >(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I>>, stream: tokio::net::TcpStream) 
+async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<PluginManager<I, P>>, stream: tokio::net::TcpStream) 
 {
     // ad ogni nuova connessione si finisce qui...
 

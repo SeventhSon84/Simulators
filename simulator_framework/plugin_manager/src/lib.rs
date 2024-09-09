@@ -1,17 +1,18 @@
 // src/plugin_manager.rs
-use simulator_framework::communication::CommunicationInterface; 
-use simulator_framework::Plugin; // Adjust if needed
+use plugin_interface::interface_for_server::CommunicationInterface;
+use plugin_interface::interface_for_plugin::Plugin;
+
 use std::sync::Arc;
 
 #[derive(Clone)]
-pub struct PluginManager<I: CommunicationInterface> {
-    plugin: Arc<Plugin>,
+pub struct PluginManager<I: CommunicationInterface, P: Plugin> {
+    plugin: Arc<P>,
     communication_interface: Arc<I>,
 }
 
-impl<I: CommunicationInterface> PluginManager<I> {
+impl<I: CommunicationInterface, P: Plugin> PluginManager<I, P> {
     pub fn new(communication_interface: Arc<I>) -> Self {
-        let plugin = Plugin::new(); // Adjust if needed
+        let plugin = P::new();
 
         PluginManager {
             plugin: Arc::new(plugin),
