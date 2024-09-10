@@ -2,11 +2,10 @@
 use plugin_interface::interface_for_server::CommunicationInterface;
 use plugin_interface::interface_for_plugin::Plugin;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-#[derive(Clone)]
 pub struct PluginManager<I: CommunicationInterface, P: Plugin> {
-    plugin: Arc<P>,
+    plugin: Mutex<P>,
     communication_interface: Arc<I>,
 }
 
@@ -15,16 +14,23 @@ impl<I: CommunicationInterface, P: Plugin> PluginManager<I, P> {
         let plugin = P::new();
 
         PluginManager {
-            plugin: Arc::new(plugin),
+            plugin: Mutex::new(plugin),
             communication_interface,
         }
     }
 
-    pub async fn handle_js_message(&self, message: String) {
-        self.plugin.handle_js_message(&*self.communication_interface, message).await;
+    pub fn handle_js_message(&self, message: String) 
+    {
+        // Your synchronous code here
+        let mut plugin = self.plugin.lock().unwrap();
+        plugin.handle_js_message(&*self.communication_interface, message);
     }
 
-    pub async fn handle_external_message(&self, message: String) {
-        self.plugin.handle_external_message(&*self.communication_interface, message).await;
+    pub fn handle_external_message(&self, message: String) 
+    {
+        // Your synchronous code here
+        let mut plugin = self.plugin.lock().unwrap();
+        plugin.handle_external_message(&*self.communication_interface, message);
     }
+    
 }

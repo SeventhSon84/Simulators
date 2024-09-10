@@ -27,6 +27,7 @@ bna_plugin = {path = "../plugins/bna", optional = true}
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
+# default = ["feature-barcode"] 
 custom-protocol = ["tauri/custom-protocol"]
 feature-barcode = ["barcode_plugin"]
 feature-bna = ["bna_plugin"]

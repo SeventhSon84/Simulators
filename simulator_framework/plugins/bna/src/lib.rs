@@ -5,9 +5,6 @@ use plugin_interface::interface_for_server::CommunicationInterface;
 
 use serde_json::Value;
 use tokio_tungstenite::tungstenite::protocol::Message;
-use std::str::FromStr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, PartialEq)]
 enum DeviceStatus {
@@ -17,17 +14,19 @@ enum DeviceStatus {
 }
 
 
-
 #[derive(Clone)]
 pub struct BNAPlugin {
-    status: Arc<Mutex<DeviceStatus>>,
-    numeric_value: Arc<Mutex<String>>,
-    read_state: Arc<Mutex<bool>>,
+    status: DeviceStatus,
+    numeric_value: String,
+    read_state: bool,
 }
 
-impl BNAPlugin{
-    fn status_to_str(&self, status: &DeviceStatus) -> &'static str {
-        match status {
+impl BNAPlugin
+{
+    fn status_to_str(&self, status: &DeviceStatus) -> &'static str 
+    {
+        match status 
+        {
             DeviceStatus::Armed => "ARMED",
             DeviceStatus::Disabled => "DISABLED",
             DeviceStatus::Error => "ERROR",
@@ -40,90 +39,87 @@ impl Plugin for BNAPlugin {
 
     fn new() -> Self {
         BNAPlugin {
-            status: Arc::new(Mutex::new(DeviceStatus::Disabled)),
-            numeric_value: Arc::new(Mutex::new(String::new())),
-            read_state: Arc::new(Mutex::new(false))
+            status: DeviceStatus::Disabled,
+            numeric_value: String::new(),
+            read_state: false
         }
     }
 
-    async fn handle_js_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
+    fn handle_js_message<I: CommunicationInterface>(&mut self, interface: &I, text: String) 
+    {
         let json: Value = serde_json::from_str(&text).expect("Invalid JSON");
 
-        if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
-            let mut status = self.status.lock().await;
-
+        if let Some(action) = json.get("action").and_then(|v| v.as_str()) 
+        {
             match action {
                 "read" => {
 
                     if let Some(value) = json.get("value").and_then(|v| v.as_str()) 
                     {
-                        *status = DeviceStatus::Disabled;
+                        self.status = DeviceStatus::Disabled;
                         
                         // Lock the read_state mutex and update its value
-                        let mut read_state = self.read_state.lock().await;
-                        *read_state = true;
+                        self.read_state = true;
 
-                        let mut numeric_value = self.numeric_value.lock().await;
-                        *numeric_value = value.to_string();
+                        self.numeric_value = value.to_string();
 
-                        let read_msg = serde_json::json!({ "event": "read", "value": *numeric_value });
+                        let read_msg = serde_json::json!({ "event": "read", "value": self.numeric_value });
 
-                        interface.send_to_external(Message::Text(read_msg.to_string())).await;
+                        interface.send_to_external(Message::Text(read_msg.to_string()));
 
-                        let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&status) });
-                        interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
-                        interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                        let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&self.status) });
+                        interface.send_to_js_clients(Message::Text(status_msg.to_string()));
+                        interface.send_to_external(Message::Text(status_msg.to_string()));
                     }
                 }
                 "error" => {
-                    if *status == DeviceStatus::Error {
-                        *status = DeviceStatus::Disabled;
+                    if self.status == DeviceStatus::Error {
+                        self.status = DeviceStatus::Disabled;
                     } else {
-                        *status = DeviceStatus::Error;
+                        self.status = DeviceStatus::Error;
                     }
                     
-                    let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&status) });
+                    let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&self.status) });
 
-                    interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
-                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                    interface.send_to_js_clients(Message::Text(status_msg.to_string()));
+                    interface.send_to_external(Message::Text(status_msg.to_string()));
                 }
                 _ => (),
             }
         }
     }
 
-    async fn handle_external_message<I: CommunicationInterface>(&self, interface: &I, text: String) {
+    fn handle_external_message<I: CommunicationInterface>(&mut self, interface: &I, text: String) {
         let json: Value = serde_json::from_str(&text).expect("Invalid JSON");
 
         if let Some(action) = json.get("action").and_then(|v| v.as_str()) {
-            let mut status = self.status.lock().await;
 
-            if *status == DeviceStatus::Error && (action == "enable" || action == "disable") {
+            if self.status == DeviceStatus::Error && (action == "enable" || action == "disable") {
                 return;
             }
 
             match action {
                 "enable" => {
-                    *status = DeviceStatus::Armed;
+                    self.status = DeviceStatus::Armed;
                     let status_msg = serde_json::json!({ "event": "statusChange", "status": "ARMED" });
 
-                    interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
-                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                    interface.send_to_js_clients(Message::Text(status_msg.to_string()));
+                    interface.send_to_external(Message::Text(status_msg.to_string()));
                 }
                 "disable" => {
-                    *status = DeviceStatus::Disabled;
+                    self.status = DeviceStatus::Disabled;
                     let status_msg = serde_json::json!({ "event": "statusChange", "status": "DISABLED" });
 
-                    interface.send_to_js_clients(Message::Text(status_msg.to_string())).await;
-                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                    interface.send_to_js_clients(Message::Text(status_msg.to_string()));
+                    interface.send_to_external(Message::Text(status_msg.to_string()));
                 }
                 "query_status" =>{
-                    let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&*status) });
-                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                    let status_msg = serde_json::json!({ "event": "statusChange", "status": self.status_to_str(&self.status) });
+                    interface.send_to_external(Message::Text(status_msg.to_string()));
                 }
                 "confirm_read" =>{
                     let status_msg = serde_json::json!({ "event": "confirm_read" });
-                    interface.send_to_external(Message::Text(status_msg.to_string())).await;
+                    interface.send_to_external(Message::Text(status_msg.to_string()));
                 }
                 _ => (),
             }
@@ -131,4 +127,3 @@ impl Plugin for BNAPlugin {
     }
 
 }
-
