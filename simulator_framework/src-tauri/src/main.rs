@@ -12,7 +12,6 @@ use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc::{self, UnboundedSender}};
 
-use tokio::sync::broadcast;
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
@@ -57,32 +56,37 @@ fn get_js_port() -> u16 {
 #[derive(Clone)]
 struct AppState {
     external_client_tx: Arc<Mutex<Option<UnboundedSender<Message>>>>,  // Sender for external client
-    js_clients_tx: Arc<Mutex<broadcast::Sender<Message>>>, // Broadcast sender for JS clients
+    js_clients_tx: Arc<Mutex<Option<UnboundedSender<Message>>>>, // Broadcast sender for JS clients
 }
+impl AppState{
 
-impl CommunicationInterface for AppState {
-    fn send_to_js_clients(&self, message: Message) {
+    fn send_to_client(&self, message: Message, client_channel: &Arc<Mutex<Option<UnboundedSender<Message>>>>)
+    {
         // This function is called synchronously, so we use `block_in_place`
         // to run async code in a blocking context.
-        tokio::task::block_in_place(|| {
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                let js_clients_tx = self.js_clients_tx.lock().await;
-                let _ = js_clients_tx.send(message);
-            });
-        });
-    }
 
-    fn send_to_external(&self, message: Message) {
         tokio::task::block_in_place(|| {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
-                let external_client_tx = self.external_client_tx.lock().await;
-                if let Some(sender) = &*external_client_tx {
+                let client_channel_mut = client_channel.lock().await;
+                if let Some(sender) = &*client_channel_mut {
                     let _ = sender.send(message);
                 }
             });
         });
+    }
+}
+
+impl CommunicationInterface for AppState 
+{
+    fn send_to_js_clients(&self, message: Message) 
+    {
+        self.send_to_client(message, &self.js_clients_tx);
+    }
+
+    fn send_to_external(&self, message: Message) 
+    {
+        self.send_to_client(message, &self.external_client_tx);
     }
 }
 
@@ -91,10 +95,9 @@ impl CommunicationInterface for AppState {
 async fn main() {
     tauri::Builder::default()
         .setup(move |_app| {
-            let (js_clients_tx, _) = broadcast::channel(16);
 
             let state = Arc::new(AppState {
-                js_clients_tx: Arc::new(Mutex::new(js_clients_tx)),
+                js_clients_tx: Arc::new(Mutex::new(None)),
                 external_client_tx: Arc::new(Mutex::new(None)),
             });
 
@@ -150,36 +153,72 @@ where
     }
 }
 
-async fn handle_js_client<I: CommunicationInterface, P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<Mutex<PluginManager<I, P>>>, stream: tokio::net::TcpStream) {
-    let ws_stream = accept_async(stream).await.expect("Error during WebSocket handshake");
-    let (mut write, mut read) = ws_stream.split();
-    let mut rx = state.js_clients_tx.lock().await.subscribe();
+async fn handle_js_client<P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<Mutex<PluginManager<AppState, P>>>, stream: tokio::net::TcpStream) {
+   // ad ogni nuova connessione si finisce qui...
+   if state.js_clients_tx.lock().await.is_some() {
+    // Refuse connection if another external client is already connected
+    println!("Connection refused: Another external client is already connected.");
+    return;
+    }
 
-    // Forward broadcast messages to this client
+    // accetta la connessione...
+    let ws_stream = match accept_async(stream).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            println!("Error during WebSocket handshake: {}", e);
+            return; // Exit the function if the handshake fails
+        }
+    };
+
+    // se la connessione e' valida si prosegue da qui...
+
+    // si splitta il canale di comunicazione con l'OP in due (write e read)
+    let (mut write_to_socket, mut read_from_socket) = ws_stream.split();
+
+    // qui si crea un nuovo canale di comunication tra questo thread e il thread che gestisce la richiesta...
+    let (tx, mut rx) = mpsc::unbounded_channel();
+
+    // salva il lato tx del canale interno nella variabile apposita...
+    *state.js_clients_tx.lock().await = Some(tx);
+
+    // qui si fa partire un altro thread che sta in ascolto per la ricezione della risposta (interna),
+    // quando si riceve la risposta (generata da un altro thread) qui si manda la risposta all'OP
     tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await 
+        while let Some(msg) = rx.recv().await
         {
-            if write.send(msg).await.is_err() 
+            if write_to_socket.send(msg).await.is_err() 
             {
+                // errore sul socket... annulla questa sessione...
                 break;
             }
         }
     });
 
-    while let Some(Ok(msg)) = read.next().await 
+    // qui si va a gestire la richiesta dell'OP (su questo thread...), 
+    // ed eventuali future richieste da questa connessione...
+    while let Some(Ok(msg)) = read_from_socket.next().await 
     {
         if let Message::Text(text) = msg 
         {
+            // Forward the message to the plugin manager for handling
             // Forward the message to the plugin manager for handling
             let lock_on_plugin = plugin_manager.lock().await;
             lock_on_plugin.handle_js_message(text);
         }
     }
+
+    println!("Connection closed");
+    *state.js_clients_tx.lock().await = None;
 }
 
-async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<Mutex<PluginManager<I, P>>>, stream: tokio::net::TcpStream) 
+async fn handle_external_client<P: Plugin>(state: Arc<AppState>, plugin_manager: Arc<Mutex<PluginManager<AppState, P>>>, stream: tokio::net::TcpStream) 
 {
     // ad ogni nuova connessione si finisce qui...
+    if state.external_client_tx.lock().await.is_some() {
+        // Refuse connection if another external client is already connected
+        println!("Connection refused: Another external client is already connected.");
+        return;
+    }
 
     // accetta la connessione...
     let ws_stream = match accept_async(stream).await {
@@ -193,7 +232,7 @@ async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc
     // se la connessione e' valida si prosegue da qui...
 
     // si splitta il canale di comunicazione con l'OP in due (write e read)
-    let (mut write, mut read) = ws_stream.split();
+    let (mut write_to_socket, mut read_from_socket) = ws_stream.split();
 
     // qui si crea un nuovo canale di comunication tra questo thread e il thread che gestisce la richiesta...
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -206,7 +245,7 @@ async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc
     tokio::spawn(async move {
         while let Some(msg) = rx.recv().await
         {
-            if write.send(msg).await.is_err() 
+            if write_to_socket.send(msg).await.is_err() 
             {
                 // errore sul socket... annulla questa sessione...
                 break;
@@ -216,7 +255,7 @@ async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc
 
     // qui si va a gestire la richiesta dell'OP (su questo thread...), 
     // ed eventuali future richieste da questa connessione...
-    while let Some(Ok(msg)) = read.next().await 
+    while let Some(Ok(msg)) = read_from_socket.next().await 
     {
         if let Message::Text(text) = msg 
         {
@@ -226,5 +265,8 @@ async fn handle_external_client<I: CommunicationInterface, P: Plugin>(state: Arc
               lock_on_plugin.handle_external_message(text);
         }
     }
+    
+    println!("Connection closed");
+    *state.external_client_tx.lock().await = None;
 }
     
