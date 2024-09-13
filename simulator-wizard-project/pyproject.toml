@@ -14,7 +14,7 @@ python="^3.12"
 click = "^8.0.0"
 
 [tool.poetry.scripts]
-createsim = "simulator_wizard.cli:cli"
+simcli = "simulator_wizard.cli:cli"
 simulatorwizard="simulator_wizard.__main__:main"
 
 [tool.poetry.dev-dependencies]

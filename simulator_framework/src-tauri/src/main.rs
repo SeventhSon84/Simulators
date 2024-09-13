@@ -31,6 +31,12 @@ use bna_plugin::BNAPlugin; // or another plugin
 #[cfg(feature = "feature-bna")]
 type SelectedPlugin = BNAPlugin;
 
+#[cfg(feature = "feature-card")]
+use card_plugin::CardPlugin;
+#[cfg(feature = "feature-card")]
+type SelectedPlugin = CardPlugin;
+
+
 #[derive(Deserialize)]
 struct Config {
     js_port: u16,

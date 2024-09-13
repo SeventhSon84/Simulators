@@ -1,0 +1,33 @@
+[package]
+name = "simulator_framework"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }
+
+[dependencies]
+tauri = { version = "1", features = ["shell-open"  ] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.17" 
+futures-util = "0.3" 
+async-trait = "0.1"
+plugin_manager = {path = "../plugin_manager" }
+plugin_interface = { path = "../plugin_interface" }
+default_plugin = {path = "../plugins/default"}
+barcode_plugin = {path = "../plugins/barcode", optional = true}
+bna_plugin = {path = "../plugins/bna", optional = true}
+
+
+[features]
+# This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
+# default = ["feature-barcode"] 
+custom-protocol = ["tauri/custom-protocol"]
+feature-barcode = ["barcode_plugin"]
+feature-bna = ["bna_plugin"]

@@ -12,9 +12,6 @@ switch ($feature) {
     "assets3" { 
         $CONFIG_FILE = "src-tauri/tauri-assets3.conf.json"
     }
-    "card" { 
-        $CONFIG_FILE = "src-tauri/tauri-card.conf.json"
-    }
     default {
         Write-Output "Usage: .\build.ps1 [assets1|assets2|assets3]"
         exit 1

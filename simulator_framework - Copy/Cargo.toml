@@ -7,5 +7,4 @@ members = [
     "plugins/default",
     "plugins/barcode", # Add any additional libraries here
     "plugins/bna",
-    "plugins/card",
 ]

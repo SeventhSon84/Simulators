@@ -23,11 +23,11 @@ plugin_interface = { path = "../plugin_interface" }
 default_plugin = {path = "../plugins/default"}
 barcode_plugin = {path = "../plugins/barcode", optional = true}
 bna_plugin = {path = "../plugins/bna", optional = true}
-
-
+card_plugin = { path = "../plugins/card", optional = true }
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 # default = ["feature-barcode"] 
 custom-protocol = ["tauri/custom-protocol"]
 feature-barcode = ["barcode_plugin"]
 feature-bna = ["bna_plugin"]
+feature-card = ["card_plugin"]
