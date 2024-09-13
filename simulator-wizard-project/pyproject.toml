@@ -1,7 +1,21 @@
 [build-system]
-requires=["setuptools", "setuptools-scm"]		
-build-backend= "setuptools.build_meta"
+requires=["poetry-core>=1.8.0"]		
+build-backend= "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name="simulator_wizard"
 version="1.0.0"
+description="A CLI wizard for creating new simulator"
+authors = ["gipi"]
+license = "MIT"
+
+[tool.poetry.scripts]
+# This section defines command-line scripts that will be installed.
+# Replace `your_module:main` with the actual module and function you want to call.
+simulatorwizard="simulator_wizard.__main__:main"
+
+[tool.poetry.dependencies]
+python="^3.12"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.1"

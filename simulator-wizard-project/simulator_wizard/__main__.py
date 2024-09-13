@@ -2,5 +2,9 @@
 from simulator_wizard import cli
 from simulator_wizard import wizard
 
-cli.cli_test()
-wizard.wizard_test()
+def main():
+    cli.cli_test()
+    wizard.wizard_test()
+
+if __name__ == "__main__":
+    main()
