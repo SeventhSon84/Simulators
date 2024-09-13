@@ -149,3 +149,6 @@ venv.bak/
 # Windows
 Thumbs.db
 ehthumbs.db
+
+#poetry
+poetry.lock
