@@ -41,5 +41,10 @@ jobs:
           poetry run pip install dist/*.whl
 
       - name: Run Package
-        run: simulatorwizard
+        shell: powershell
+        run: |
+          $env:PATH += ";C:\Users\runneradmin\AppData\Roaming\Python\Scripts"
+          cd simulator-wizard-project
+          poetry run simulatorwizard
+
 
