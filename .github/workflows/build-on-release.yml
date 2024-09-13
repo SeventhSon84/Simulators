@@ -1,0 +1,44 @@
+# .github/workflows/ci.yml
+
+name: CI
+
+on:
+  release:
+    types:
+      - created
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Download Poetry
+        run: |
+          (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
+
+      - name: Install poetry
+        run: |
+          poetry install
+          poetry build
+
+      - name: Install your package 
+        shell: powershell
+        run: |
+          $whlFiles = Get-ChildItem -Path dist -Filter *.whl
+          foreach ($whlFile in $whlFiles) {
+            poetry run pip install $whlFile.FullName
+          }
+          # Install the package itself; adjust if your package has specific installation needs
+          poetry run pip install dist/*.whl
+
+      - name: Run Package
+        run: simulatorwizard
+
