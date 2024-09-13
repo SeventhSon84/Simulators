@@ -26,6 +26,7 @@ jobs:
 
       - name: Install poetry
         run: |
+          $env:PATH += ";C:\Users\runneradmin\AppData\Roaming\Python\Scripts"
           poetry install
           poetry build
 
