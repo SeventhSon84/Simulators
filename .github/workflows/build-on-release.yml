@@ -3,6 +3,7 @@
 name: CI
 
 on:
+  push:
   release:
     types:
       - created
@@ -27,19 +28,14 @@ jobs:
       - name: Install poetry
         run: |
           $env:PATH += ";C:\Users\runneradmin\AppData\Roaming\Python\Scripts"
+          cd simulator-wizard-project
           poetry install
-          poetry build
-
-      - name: Install your package 
+  
+      - name: Run Package
         shell: powershell
         run: |
-          $whlFiles = Get-ChildItem -Path dist -Filter *.whl
-          foreach ($whlFile in $whlFiles) {
-            poetry run pip install $whlFile.FullName
-          }
-          # Install the package itself; adjust if your package has specific installation needs
-          poetry run pip install dist/*.whl
+          $env:PATH += ";C:\Users\runneradmin\AppData\Roaming\Python\Scripts"
+          cd simulator-wizard-project
+          poetry run simulatorwizard
 
-      - name: Run Package
-        run: simulatorwizard
 
